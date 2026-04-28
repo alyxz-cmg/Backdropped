@@ -1,8 +1,15 @@
 import cv2
-import mediapipe as mp
 import numpy as np
+import urllib.request
 from pathlib import Path
 from datetime import datetime
+
+from mediapipe.tasks.python.vision import image_segmenter
+from mediapipe.tasks.python.vision.core import image as mp_image
+
+MODEL_URL = "https://storage.googleapis.com/mediapipe-assets/selfie_segmentation.tflite"
+MODEL_FILENAME = "selfie_segmentation.tflite"
+MODEL_DIR = Path("models")
 
 
 class Camera:
@@ -10,12 +17,21 @@ class Camera:
         self._capture = cv2.VideoCapture(index)
         if not self._capture.isOpened():
             raise RuntimeError("Unable to open webcam.")
-        self._segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(
-            model_selection=0
+
+        model_path = self._download_model()
+        self._segmenter = image_segmenter.ImageSegmenter.create_from_model_path(
+            str(model_path)
         )
         self._background = np.array([0, 255, 0], dtype=np.uint8)
         self._writer = None
         self._output_path = None
+
+    def _download_model(self) -> Path:
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        model_path = MODEL_DIR / MODEL_FILENAME
+        if not model_path.exists():
+            urllib.request.urlretrieve(MODEL_URL, str(model_path))
+        return model_path
 
     def read_frame(self):
         ok, frame = self._capture.read()
@@ -26,9 +42,26 @@ class Camera:
         height, width = rgb_frame.shape[:2]
 
         # Run segmentation on a smaller frame to keep the live preview responsive.
-        mask_input = cv2.resize(rgb_frame, (width // 2, height // 2), interpolation=cv2.INTER_LINEAR)
-        result = self._segmenter.process(mask_input)
-        mask = cv2.resize(result.segmentation_mask, (width, height), interpolation=cv2.INTER_LINEAR)
+        mask_input = cv2.resize(
+            rgb_frame,
+            (width // 2, height // 2),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        mp_image_input = mp_image.Image(mp_image.ImageFormat.SRGB, mask_input)
+        result = self._segmenter.segment(mp_image_input)
+
+        if not result.confidence_masks:
+            return rgb_frame
+
+        mask = np.asarray(result.confidence_masks[0].numpy_view())
+        if mask.ndim == 3 and mask.shape[-1] == 1:
+            mask = mask[..., 0]
+        if mask.dtype != np.float32:
+            mask = mask.astype(np.float32)
+        if mask.max() > 1.0:
+            mask = mask / 255.0
+
+        mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_LINEAR)
         foreground = mask > 0.5
 
         composited = np.full_like(rgb_frame, self._background)
