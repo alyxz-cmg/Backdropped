@@ -14,10 +14,13 @@ MODEL_DIR = Path("models")
 
 class Camera:
     def __init__(self, index: int = 0) -> None:
-        self._capture = cv2.VideoCapture(index)
+        self._capture = cv2.VideoCapture(index, cv2.CAP_AVFOUNDATION)
         if not self._capture.isOpened():
             raise RuntimeError("Unable to open webcam.")
 
+        self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        
         model_path = self._download_model()
         self._segmenter = image_segmenter.ImageSegmenter.create_from_model_path(
             str(model_path)
@@ -44,7 +47,7 @@ class Camera:
         # Run segmentation on a smaller frame to keep the live preview responsive.
         mask_input = cv2.resize(
             rgb_frame,
-            (width // 2, height // 2),
+            (max(1, width // 2), max(1, height // 2)),
             interpolation=cv2.INTER_LINEAR,
         )
         mp_image_input = mp_image.Image(mp_image.ImageFormat.SRGB, mask_input)
@@ -76,8 +79,10 @@ class Camera:
         if self._writer is not None:
             return str(self._output_path)
 
-        width = int(self._capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(self._capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        ok, frame = self._capture.read()
+        if not ok:
+            raise RuntimeError("Failed to read frame from camera.")
+        height, width = frame.shape[:2]
         recordings_dir = Path("recordings")
         recordings_dir.mkdir(exist_ok=True)
 
