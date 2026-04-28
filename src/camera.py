@@ -29,6 +29,18 @@ class Camera:
         self._writer = None
         self._output_path = None
 
+    def switch_source(self, new_index: int) -> None:
+        """Releases the current camera and opens a new index."""
+        if self._capture.isOpened():
+            self._capture.release()
+            
+        self._capture = cv2.VideoCapture(new_index, cv2.CAP_AVFOUNDATION)
+        if not self._capture.isOpened():
+            raise RuntimeError(f"Unable to open webcam at index {new_index}.")
+
+        self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     def _download_model(self) -> Path:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         model_path = MODEL_DIR / MODEL_FILENAME
