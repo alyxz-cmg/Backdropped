@@ -97,7 +97,7 @@ class CameraWindow(QMainWindow):
         self._populate_cameras()
 
         index = self._camera_selector.findText(current_name)
-        
+
         if index >= 0:
             self._camera_selector.setCurrentIndex(index)
         else:
@@ -115,7 +115,18 @@ class CameraWindow(QMainWindow):
             self._timer.stop()
             self._camera.switch_source(corrected_index) 
             self._timer.start(30)
+            
             self._status.setText(f"Switched to {self._camera_selector.currentText()}")
+
+            QTimer.singleShot(5000, self._reset_status)
+
+    def _reset_status(self) -> None:
+        """Resets the status text based on the current state of the app."""
+        if self._camera.is_recording:
+            filename = self._camera._output_path.name if self._camera._output_path else "video"
+            self._status.setText(f"Recording to {filename}")
+        else:
+            self._status.setText("Idle")
 
     def _update_frame(self) -> None:
         frame = self._camera.read_frame()
