@@ -56,7 +56,6 @@ class Camera:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width = rgb_frame.shape[:2]
 
-        # Run segmentation on a smaller frame to keep the live preview responsive.
         mask_input = cv2.resize(
             rgb_frame,
             (max(1, width // 2), max(1, height // 2)),
@@ -69,6 +68,7 @@ class Camera:
             return rgb_frame
 
         mask = np.asarray(result.confidence_masks[0].numpy_view())
+        
         if mask.ndim == 3 and mask.shape[-1] == 1:
             mask = mask[..., 0]
         if mask.dtype != np.float32:
@@ -77,10 +77,12 @@ class Camera:
             mask = mask / 255.0
 
         mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_LINEAR)
-        foreground = mask > 0.5
+        mask = cv2.GaussianBlur(mask, (5, 5), 0)
+        alpha = mask[..., np.newaxis]
+        bg_frame = np.full_like(rgb_frame, self._background)
 
-        composited = np.full_like(rgb_frame, self._background)
-        composited[foreground] = rgb_frame[foreground]
+        composited = (rgb_frame.astype(float) * alpha + 
+                      bg_frame.astype(float) * (1.0 - alpha)).astype(np.uint8)
 
         if self._writer is not None:
             self._writer.write(cv2.cvtColor(composited, cv2.COLOR_RGB2BGR))
